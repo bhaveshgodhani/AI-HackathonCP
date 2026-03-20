@@ -57,7 +57,10 @@ export default function UploadModal({ open, onClose, onComplete }) {
         } else if (data.status === "error") {
           if (pollRef.current) clearInterval(pollRef.current);
           pollRef.current = null;
-          setError("Processing failed. Check API keys and try again.");
+          setError(
+            data.summary?.trim() ||
+              "Processing failed. Check backend logs and API configuration."
+          );
         }
       } catch {
         setError("Lost connection while polling.");

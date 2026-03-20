@@ -46,7 +46,10 @@ def _extract_json(text: str) -> str:
 def analyze_call(transcript: str) -> dict:
     from openai import OpenAI
 
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    api_key = (os.getenv("OPENAI_API_KEY") or "").strip()
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY is missing in backend environment")
+    client = OpenAI(api_key=api_key)
     user_message = f"Analyze this sales call transcript:\n\n{transcript}"
 
     model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
