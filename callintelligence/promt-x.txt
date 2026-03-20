@@ -1,0 +1,261 @@
+You are an expert full-stack developer. Build me a complete AI-powered Call Intelligence Platform as a hackathon project. Follow every instruction precisely.
+
+---
+
+## PROJECT OVERVIEW
+Build a web app that lets users upload sales call audio recordings, transcribes them using OpenAI Whisper, analyzes them using the OpenAI API, and displays results on a dashboard.
+
+---
+
+## TECH STACK
+- Frontend: React (Vite) + TailwindCSS + React Router
+- Backend: FastAPI (Python)
+- Transcription: OpenAI Whisper API (openai Python SDK)
+- AI Analysis: Anthropic OpenAI API (anthropic Python SDK)
+- Database: SQLite with SQLAlchemy ORM
+- Audio Player: WaveSurfer.js (npm)
+- Charts: Recharts (npm)
+- HTTP Client: Axios
+
+---
+
+## FOLDER STRUCTURE
+Create this exact structure:
+
+call-intelligence/
+├── backend/
+│   ├── main.py              # FastAPI app entry point
+│   ├── database.py          # SQLAlchemy setup + SQLite
+│   ├── models.py            # DB models
+│   ├── schemas.py           # Pydantic schemas
+│   ├── routers/
+│   │   ├── calls.py         # Upload, list, get call endpoints
+│   │   └── analysis.py      # Trigger analysis endpoint
+│   ├── services/
+│   │   ├── transcription.py # Whisper API integration
+│   │   └── ai_analysis.py   # OpenAI API integration
+│   ├── uploads/             # Stored audio files
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── pages/
+│   │   │   ├── Dashboard.jsx        # Main overview page
+│   │   │   └── CallDetail.jsx       # Individual call analysis page
+│   │   ├── components/
+│   │   │   ├── AudioPlayer.jsx      # WaveSurfer audio player
+│   │   │   ├── ScoreCard.jsx        # Score display component
+│   │   │   ├── SentimentBadge.jsx   # Sentiment display
+│   │   │   ├── TalkTimeChart.jsx    # Pie chart for talk time
+│   │   │   ├── KeywordTags.jsx      # Keyword display
+│   │   │   └── UploadModal.jsx      # File upload modal
+│   │   ├── App.jsx
+│   │   └── main.jsx
+│   ├── index.html
+│   ├── vite.config.js
+│   ├── tailwind.config.js
+│   └── package.json
+└── README.md
+
+---
+
+## BACKEND — DETAILED INSTRUCTIONS
+
+### database.py
+- SQLite database file: call_intelligence.db
+- Use SQLAlchemy with declarative base
+
+### models.py
+Create a `Call` model with these fields:
+- id (Integer, primary key, autoincrement)
+- filename (String) — original audio file name
+- file_path (String) — path to stored file
+- status (String) — "uploaded", "transcribing", "analyzing", "complete", "error"
+- transcript (Text, nullable)
+- duration_seconds (Float, nullable)
+- agent_talk_time_percent (Float, nullable)
+- customer_talk_time_percent (Float, nullable)
+- overall_score (Float, nullable) — 0 to 10
+- sentiment (String, nullable) — "Positive", "Neutral", "Negative"
+- summary (Text, nullable)
+- communication_clarity_score (Float, nullable)
+- politeness_score (Float, nullable)
+- business_knowledge_score (Float, nullable)
+- problem_handling_score (Float, nullable)
+- listening_ability_score (Float, nullable)
+- keywords (JSON, nullable) — list of strings
+- action_items (JSON, nullable) — list of strings
+- positive_observations (JSON, nullable) — list of strings
+- negative_observations (JSON, nullable) — list of strings
+- questionnaire_coverage (JSON, nullable) — dict of {question: bool}
+- created_at (DateTime, default now)
+
+### services/transcription.py
+- Use OpenAI Python SDK: `from openai import OpenAI`
+- Function `transcribe_audio(file_path: str) -> dict` 
+- Call `client.audio.transcriptions.create(model="whisper-1", file=audio_file, response_format="verbose_json")`
+- Return dict with: transcript text, duration
+
+### services/ai_analysis.py
+- Use Anthropic Python SDK: `import anthropic`
+- Function `analyze_call(transcript: str) -> dict`
+- Send transcript to OpenAI with this EXACT system prompt and user message:
+
+SYSTEM PROMPT:
+"""
+You are an expert sales call analyzer. Analyze the provided call transcript and return a JSON object with EXACTLY this structure — no markdown, no explanation, just the raw JSON:
+{
+  "overall_score": <float 0-10>,
+  "sentiment": "<Positive|Neutral|Negative>",
+  "summary": "<2-3 sentence summary of the call>",
+  "agent_talk_time_percent": <float, estimate percentage 0-100>,
+  "customer_talk_time_percent": <float, remaining percentage>,
+  "communication_clarity_score": <float 1-10>,
+  "politeness_score": <float 1-10>,
+  "business_knowledge_score": <float 1-10>,
+  "problem_handling_score": <float 1-10>,
+  "listening_ability_score": <float 1-10>,
+  "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
+  "action_items": ["action item 1", "action item 2", "action item 3"],
+  "positive_observations": ["observation 1", "observation 2"],
+  "negative_observations": ["observation 1", "observation 2"],
+  "questionnaire_coverage": {
+    "Budget Discussion": true,
+    "Competitor Comparison": false,
+    "Product/Service Fit": true,
+    "Timeline Discussion": false,
+    "Decision Maker Identified": true,
+    "Pain Points Explored": true,
+    "Next Steps Agreed": false
+  }
+}
+"""
+
+USER MESSAGE: "Analyze this sales call transcript:\n\n{transcript}"
+
+- Parse the JSON response and return it as a Python dict
+- Handle JSON parse errors gracefully
+
+### routers/calls.py
+Create these FastAPI endpoints:
+- POST /api/calls/upload — accepts multipart file upload, saves to uploads/, creates DB record with status "uploaded", returns call id
+- GET /api/calls — returns list of all calls with all fields
+- GET /api/calls/{call_id} — returns single call details
+- DELETE /api/calls/{call_id} — deletes call and its audio file
+
+### routers/analysis.py
+- POST /api/analyze/{call_id} — triggers full pipeline:
+  1. Set status to "transcribing"
+  2. Call transcription service
+  3. Save transcript and duration to DB
+  4. Set status to "analyzing"
+  5. Call AI analysis service
+  6. Save all analysis fields to DB
+  7. Set status to "complete"
+  8. Return the full updated call object
+  - Run this in a background task using FastAPI BackgroundTasks
+
+### main.py
+- Create FastAPI app with CORS enabled for http://localhost:5173
+- Include both routers
+- Add /uploads static file serving for audio files
+- Load env vars: OPENAI_API_KEY, ANTHROPIC_API_KEY
+
+### requirements.txt
+fastapi
+uvicorn
+sqlalchemy
+python-multipart
+openai
+anthropic
+python-dotenv
+aiofiles
+
+---
+
+## FRONTEND — DETAILED INSTRUCTIONS
+
+### Dashboard.jsx (Main Page — route: "/")
+Show these stats at the top in cards:
+- Total Calls Processed (count)
+- Sentiment Split (Positive / Neutral / Negative counts with colored badges)
+- Average Call Score (0-10)
+- Average Call Duration (in minutes)
+- Total Action Items (sum across all calls)
+
+Below stats: a table/grid of all calls with columns:
+- File name
+- Date
+- Duration
+- Overall Score (shown as colored badge: green ≥7, yellow 4-6, red <4)
+- Sentiment (colored badge)
+- Status (with loading spinner if not "complete")
+- Actions: View button, Delete button
+
+Add an "Upload New Call" button that opens UploadModal.jsx
+
+### UploadModal.jsx
+- File picker accepting audio files (mp3, wav, m4a, ogg)
+- On upload: POST to /api/calls/upload, then immediately POST to /api/analyze/{id}
+- Show progress states: "Uploading...", "Transcribing...", "Analyzing...", "Complete!"
+- Poll GET /api/calls/{id} every 3 seconds to check status and update UI
+
+### CallDetail.jsx (Individual Call — route: "/calls/:id")
+Fetch call data from GET /api/calls/{id}
+
+Layout:
+1. Header: filename, date, back button
+2. Row 1 (3 cards):
+   - Call Summary (AI summary text)
+   - Sentiment badge (large, colored)
+   - Overall Score (large number /10, colored)
+3. AudioPlayer component
+4. Row 2 (2 cards):
+   - Talk Time Analysis (TalkTimeChart — pie or donut chart showing agent vs customer %)
+   - Agent Performance Scores (5 scores as horizontal bar chart using Recharts)
+5. Row 3 (2 cards):
+   - Business Questionnaire Coverage (table with question and ✅/❌)
+   - Top Keywords (KeywordTags component — colored pill tags)
+6. Row 4 (2 cards):
+   - Follow-Up Action Items (numbered list)
+   - Positive Observations (green bullets) + Negative Observations (red bullets)
+
+### AudioPlayer.jsx
+- Use WaveSurfer.js to render waveform
+- Show play/pause button, current time, total duration
+- Audio source: http://localhost:8000/uploads/{filename}
+
+### Design requirements:
+- Clean, professional dark-friendly design using Tailwind
+- Use a consistent color scheme: indigo/purple as primary accent
+- All score numbers styled boldly with color coding
+- Responsive layout (works on desktop)
+- Loading skeletons while data fetches
+- Empty state on dashboard if no calls uploaded yet
+
+---
+
+## ENVIRONMENT SETUP
+Create a .env file in /backend/:
+OPENAI_API_KEY=your_key_here
+ANTHROPIC_API_KEY=your_key_here
+
+Create a .env file in /frontend/:
+VITE_API_BASE_URL=http://localhost:8000
+
+---
+
+## README.md
+Write a clear README with:
+- Project description
+- Setup instructions (backend: pip install, uvicorn; frontend: npm install, npm run dev)
+- Architecture overview
+- How to use the app
+
+---
+
+## START COMMAND
+After building, tell me how to run:
+- Backend: cd backend && uvicorn main:app --reload
+- Frontend: cd frontend && npm run dev
+
+Build everything now. Start with the backend, then the frontend. Make sure all files are complete and working together.
