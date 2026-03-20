@@ -27,9 +27,10 @@ def run_analysis_pipeline(call_id: int):
         )
         try:
             t_result = transcribe_audio(abs_path)
-        except Exception:
+        except Exception as exc:
             logger.exception("Transcription failed for call_id=%s", call_id)
             call.status = "error"
+            call.summary = f"Transcription failed: {str(exc) or 'Unknown error'}"
             db.commit()
             return
         call.transcript = t_result.get("transcript")
@@ -38,9 +39,10 @@ def run_analysis_pipeline(call_id: int):
         db.commit()
         try:
             analysis = analyze_call(call.transcript or "")
-        except Exception:
+        except Exception as exc:
             logger.exception("Analysis failed for call_id=%s", call_id)
             call.status = "error"
+            call.summary = f"Analysis failed: {str(exc) or 'Unknown error'}"
             db.commit()
             return
         call.overall_score = analysis.get("overall_score")
@@ -60,11 +62,12 @@ def run_analysis_pipeline(call_id: int):
         call.questionnaire_coverage = analysis.get("questionnaire_coverage")
         call.status = "complete"
         db.commit()
-    except Exception:
+    except Exception as exc:
         try:
             call = db.query(Call).filter(Call.id == call_id).first()
             if call:
                 call.status = "error"
+                call.summary = f"Processing failed: {str(exc) or 'Unknown error'}"
                 db.commit()
         except Exception:
             pass
